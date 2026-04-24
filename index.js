@@ -52,17 +52,34 @@ builder.defineStreamHandler(async ({ type, id }) => {
     const tmdbId = type === 'movie' ? tmdbRes.movie_results[0]?.id : tmdbRes.tv_results[0]?.id
     if (!tmdbId) return { streams: [] }
 
+    const host = process.env.PUBLIC_URL || 'https://streamvault-resolver.onrender.com'
+    const embedUrl = type === 'series'
+      ? `${host}/embed/tv/${tmdbId}/${season}/${episode}`
+      : `${host}/embed/movie/${tmdbId}`
+
+    // Try to resolve a direct stream first (fast cache hit)
     const streamType = type === 'series' ? 'series' : 'movie'
     const stream = await getCachedStream(streamType, tmdbId, season, episode)
-    if (!stream) return { streams: [] }
 
-    return {
-      streams: [{
+    const streams = []
+
+    if (stream?.url) {
+      streams.push({
         name: 'StreamVault',
+        title: 'Direct stream',
         url: stream.url,
         behaviorHints: { notWebReady: stream.type === 'hls' },
-      }]
+      })
     }
+
+    // Always include the embed page as a fallback — opens in browser overlay in Stremio
+    streams.push({
+      name: 'StreamVault',
+      title: 'Watch in browser',
+      externalUrl: embedUrl,
+    })
+
+    return { streams }
   } catch (e) {
     logger.error(`Stremio handler error: ${e.message}`)
     return { streams: [] }

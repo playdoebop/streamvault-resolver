@@ -5,33 +5,6 @@ const logger = require('./logger')
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 
-const HEADERS = {
-  'User-Agent': UA,
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-  'Accept-Language': 'en-US,en;q=0.9',
-}
-
-// ── Source URL builders ───────────────────────────────────────
-
-function getSources(type, tmdbId, imdbId, season, episode) {
-  if (type === 'movie') {
-    return [
-      imdbId && `https://vidsrc.to/embed/movie/${imdbId}`,
-      `https://vidsrc.xyz/embed/movie/${imdbId || tmdbId}`,
-      `https://vidlink.pro/movie/${tmdbId}`,
-      `https://embed.su/embed/movie/${tmdbId}`,
-      `https://autoembed.co/movie/tmdb/${tmdbId}`,
-    ].filter(Boolean)
-  }
-  return [
-    imdbId && `https://vidsrc.to/embed/tv/${imdbId}/${season}/${episode}`,
-    `https://vidsrc.xyz/embed/tv/${imdbId || tmdbId}/${season}/${episode}`,
-    `https://vidlink.pro/tv/${tmdbId}/${season}/${episode}`,
-    `https://embed.su/embed/tv/${tmdbId}/${season}/${episode}`,
-    `https://autoembed.co/tv/tmdb/${tmdbId}-${season}-${episode}`,
-  ].filter(Boolean)
-}
-
 // ── TMDB IMDB lookup ──────────────────────────────────────────
 
 async function getImdbId(type, tmdbId) {
@@ -46,53 +19,13 @@ async function getImdbId(type, tmdbId) {
   }
 }
 
-// ── Axios + regex scraper ─────────────────────────────────────
-
-function extractStream(html) {
-  const text = typeof html === 'string' ? html : JSON.stringify(html)
-  const m3u8 = text.match(/https?:\/\/[^\s"'\\<>]+\.m3u8(?:\?[^\s"'\\<>]*)?/g)
-  if (m3u8) {
-    const valid = m3u8.filter(u => u.length > 40 && !u.includes('example'))
-    if (valid.length) return { url: valid[0], type: 'hls' }
-  }
-  const mp4 = text.match(/https?:\/\/[^\s"'\\<>]+\.mp4(?:\?[^\s"'\\<>]*)?/g)
-  if (mp4) {
-    const valid = mp4.filter(u => u.length > 40)
-    if (valid.length) return { url: valid[0], type: 'mp4' }
-  }
-  return null
-}
-
-async function tryAxios(url) {
-  try {
-    const res = await axios.get(url, {
-      headers: { ...HEADERS, Referer: 'https://www.google.com/' },
-      timeout: 10000, maxRedirects: 5,
-    })
-    const direct = extractStream(res.data)
-    if (direct) return direct
-
-    const iframeSrc = typeof res.data === 'string'
-      ? (res.data.match(/(?:src|data-src)=["']([^"']+(?:embed|player|stream)[^"']+)["']/i) || [])[1]
-      : null
-    if (iframeSrc) {
-      const inner = await axios.get(
-        iframeSrc.startsWith('http') ? iframeSrc : new URL(iframeSrc, url).href,
-        { headers: { ...HEADERS, Referer: url }, timeout: 8000, maxRedirects: 3 }
-      ).catch(() => null)
-      if (inner) return extractStream(inner.data)
-    }
-  } catch {}
-  return null
-}
-
 // ── yt-dlp ────────────────────────────────────────────────────
 
-function tryYtDlp(url, timeoutMs = 22000) {
+function tryYtDlp(url, timeoutMs = 20000) {
   return new Promise(resolve => {
     execFile('yt-dlp', [
       '--get-url', '--no-playlist', '--no-check-certificate',
-      '--user-agent', UA, '--socket-timeout', '12',
+      '--user-agent', UA, '--socket-timeout', '10',
       '-f', 'best[height<=1080]/best', url,
     ], { timeout: timeoutMs }, (err, stdout) => {
       if (err) { resolve(null); return }
@@ -103,29 +36,37 @@ function tryYtDlp(url, timeoutMs = 22000) {
   })
 }
 
-// ── vidlink direct API ────────────────────────────────────────
+// ── vidlink JSON API ──────────────────────────────────────────
 
-async function tryVidlinkApi(type, tmdbId) {
+async function tryVidlinkApi(type, tmdbId, season, episode) {
   try {
     const endpoint = type === 'movie'
       ? `https://vidlink.pro/api/b/movie/${tmdbId}`
-      : null
-    if (!endpoint) return null
+      : `https://vidlink.pro/api/b/tv/${tmdbId}?s=${season}&e=${episode}`
     const res = await axios.get(endpoint, {
-      headers: { ...HEADERS, Referer: 'https://vidlink.pro/' },
+      headers: { 'User-Agent': UA, Referer: 'https://vidlink.pro/' },
       timeout: 8000,
     })
     const d = res.data
-    if (d?.stream?.playlist) return { url: d.stream.playlist, type: 'hls' }
-    if (d?.stream?.url) return { url: d.stream.url, type: d.stream.type || 'hls' }
-    // sometimes it's nested under data
-    const s = d?.data?.stream || d?.results?.stream
-    if (s?.playlist) return { url: s.playlist, type: 'hls' }
-    if (s?.url) return { url: s.url, type: 'hls' }
-    return extractStream(JSON.stringify(d))
-  } catch {
-    return null
-  }
+    // try common response shapes
+    const playlist =
+      d?.stream?.playlist ||
+      d?.data?.stream?.playlist ||
+      d?.results?.stream?.playlist ||
+      d?.stream?.url ||
+      d?.url ||
+      null
+    if (playlist && playlist.startsWith('http')) return { url: playlist, type: 'hls' }
+
+    // last-resort: regex for any m3u8 in the JSON response
+    const text = JSON.stringify(d)
+    const m3u8 = text.match(/https?:\\?\/\\?\/[^\s"'\\<>]+\.m3u8(?:\?[^\s"'\\<>]*)?/)
+    if (m3u8) {
+      const clean = m3u8[0].replace(/\\+\//g, '/').replace(/\\\//g, '/')
+      if (clean.length > 40) return { url: clean, type: 'hls' }
+    }
+  } catch {}
+  return null
 }
 
 // ── Main resolver ─────────────────────────────────────────────
@@ -133,33 +74,29 @@ async function tryVidlinkApi(type, tmdbId) {
 async function resolveStream(type, tmdbId, season, episode) {
   logger.info(`Resolving: ${type} tmdb:${tmdbId} s${season ?? '-'}e${episode ?? '-'}`)
 
-  // Get IMDB ID for vidsrc.to (needs imdb id)
+  // 1. vidlink JSON API (zero scraping overhead, returns structured response)
+  const vl = await tryVidlinkApi(type, tmdbId, season, episode)
+  if (vl) { logger.info(`vidlink API hit: ${vl.url.slice(0, 80)}`); return vl }
+
+  // 2. yt-dlp — try the two sources most likely to have yt-dlp extractors
   const imdbId = await getImdbId(type, tmdbId)
-  logger.info(`IMDB ID: ${imdbId || 'not found'}`)
+  const ytSources = type === 'movie'
+    ? [
+        imdbId && `https://vidsrc.to/embed/movie/${imdbId}`,
+        `https://vidsrc.xyz/embed/movie/${imdbId || tmdbId}`,
+      ].filter(Boolean)
+    : [
+        imdbId && `https://vidsrc.to/embed/tv/${imdbId}/${season}/${episode}`,
+        `https://vidsrc.xyz/embed/tv/${imdbId || tmdbId}/${season}/${episode}`,
+      ].filter(Boolean)
 
-  // Fast path: vidlink API (returns JSON directly)
-  if (type === 'movie') {
-    const vl = await tryVidlinkApi(type, tmdbId)
-    if (vl) { logger.info(`vidlink API hit: ${vl.url.slice(0, 80)}`); return vl }
-  }
-
-  const sources = getSources(type, tmdbId, imdbId, season, episode)
-
-  // Round 1: axios+regex on all sources (fast, ~10s each)
-  for (const url of sources) {
-    logger.info(`axios: ${url}`)
-    const result = await tryAxios(url)
-    if (result) { logger.info(`axios hit: ${result.url.slice(0, 80)}`); return result }
-  }
-
-  // Round 2: yt-dlp on each source (slower but reliable)
-  for (const url of sources) {
+  for (const url of ytSources) {
     logger.info(`yt-dlp: ${url}`)
     const result = await tryYtDlp(url)
     if (result) { logger.info(`yt-dlp hit: ${result.url.slice(0, 80)}`); return result }
   }
 
-  logger.warn(`All sources failed for ${type} tmdb:${tmdbId}`)
+  logger.info(`No direct stream found for ${type} tmdb:${tmdbId} — embed page will iframe-fallback`)
   return null
 }
 
