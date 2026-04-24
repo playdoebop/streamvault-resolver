@@ -155,7 +155,11 @@ app.get('/', (req, res) => {
   res.send(buildLandingPage(req.headers.host || 'localhost'))
 })
 
-app.listen(PORT, '0.0.0.0', () => logger.info(`StreamVault resolver on port ${PORT}`))
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => logger.info(`StreamVault resolver on port ${PORT}`))
+}
+
+module.exports = { buildEmbedPage, buildLandingPage, app }
 
 // ── HTML ──────────────────────────────────────────────────────
 
@@ -169,7 +173,7 @@ function buildEmbedPage(resolveUrl, fallbacks) {
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
-  html,body{width:100%;height:100%;background:#000;overflow:hidden;font-family:system-ui,sans-serif}
+  html,body{width:100%;height:100%;background:#000;overflow:hidden}
   #player{position:absolute;inset:0;width:100%;height:100%;display:none}
   #frame{position:absolute;inset:0;width:100%;height:100%;border:none;display:none}
   #overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#000;z-index:10;transition:opacity .4s}
@@ -177,24 +181,12 @@ function buildEmbedPage(resolveUrl, fallbacks) {
   .spinner{width:44px;height:44px;border:3px solid rgba(168,85,247,.2);border-top-color:#a855f7;border-radius:50%;animation:spin .8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
   #status{color:#71717a;font-size:13px;text-align:center;max-width:260px}
-  #bar{
-    position:absolute;bottom:0;left:0;right:0;z-index:20;
-    display:flex;align-items:center;gap:6px;padding:8px 10px;
-    background:linear-gradient(to top,rgba(0,0,0,.85),transparent);
-    opacity:0;transition:opacity .3s;flex-wrap:wrap
-  }
-  body:hover #bar{opacity:1}
-  #bar span{color:#71717a;font-size:11px;margin-right:2px}
-  .s-btn{padding:3px 10px;border-radius:999px;border:none;cursor:pointer;font-size:11px;font-weight:600;background:rgba(255,255,255,.1);color:#e4e4e7;transition:background .15s}
-  .s-btn.active{background:#a855f7;color:#fff}
-  .s-btn:hover:not(.active){background:rgba(255,255,255,.2)}
 </style>
 </head>
 <body>
 <div id="overlay"><div class="spinner"></div><div id="status">Finding best stream…</div></div>
 <video id="player" controls playsinline></video>
 <iframe id="frame" allowfullscreen allow="autoplay;encrypted-media;fullscreen;picture-in-picture"></iframe>
-<div id="bar"></div>
 
 <script>
 const FALLBACKS = ${JSON.stringify(fallbacks)}
@@ -203,39 +195,16 @@ const overlay = document.getElementById('overlay')
 const status = document.getElementById('status')
 const player = document.getElementById('player')
 const frame = document.getElementById('frame')
-const bar = document.getElementById('bar')
 let hls = null
-let mode = null   // 'hls' | 'mp4' | 'iframe'
 let iframeIdx = 0
 let iframeTimer = null
 
 function setStatus(msg) { status.textContent = msg }
 function hideOverlay() { overlay.classList.add('hidden') }
 
-function buildBar(activeLabel) {
-  bar.innerHTML = '<span>Servers:</span>'
-  const streamBtn = document.createElement('button')
-  streamBtn.className = 's-btn' + (activeLabel === 'StreamVault' ? ' active' : '')
-  streamBtn.textContent = 'StreamVault'
-  streamBtn.onclick = () => startDirect()
-  bar.appendChild(streamBtn)
-  FALLBACKS.forEach((s, i) => {
-    const b = document.createElement('button')
-    b.className = 's-btn' + (activeLabel === s.name ? ' active' : '')
-    b.textContent = s.name
-    b.onclick = () => loadIframe(i)
-    bar.appendChild(b)
-  })
-}
-
-function setActiveBtn(label) {
-  bar.querySelectorAll('.s-btn').forEach(b => b.classList.toggle('active', b.textContent === label))
-}
-
 // ── Direct HLS/MP4 player ─────────────────────────────────────
 
 function playDirect(url, type) {
-  mode = type
   frame.style.display = 'none'
   player.style.display = 'block'
   clearIframeTimer()
@@ -261,7 +230,6 @@ function playDirect(url, type) {
 }
 
 async function startDirect() {
-  setActiveBtn('StreamVault')
   player.style.display = 'none'
   frame.style.display = 'none'
   overlay.classList.remove('hidden')
@@ -294,21 +262,15 @@ function loadIframe(idx) {
   player.style.display = 'none'
   frame.style.display = 'block'
   overlay.classList.remove('hidden')
-  setStatus('Loading ' + FALLBACKS[idx].name + '…')
-  setActiveBtn(FALLBACKS[idx].name)
+  setStatus('Loading…')
   frame.src = FALLBACKS[idx].url
-  iframeTimer = setTimeout(() => { if (overlay.classList.contains('hidden') === false) loadIframe(idx + 1) }, 18000)
+  iframeTimer = setTimeout(() => { if (!overlay.classList.contains('hidden')) loadIframe(idx + 1) }, 18000)
 }
 
-function fallbackToIframe(idx) {
-  setStatus('Trying backup server…')
-  loadIframe(idx)
-}
+function fallbackToIframe(idx) { loadIframe(idx) }
 
 frame.addEventListener('load', () => { clearIframeTimer(); hideOverlay() })
 
-// ── Boot ──────────────────────────────────────────────────────
-buildBar('StreamVault')
 startDirect()
 </script>
 </body>
