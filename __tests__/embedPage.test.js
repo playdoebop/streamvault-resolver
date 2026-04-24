@@ -1,8 +1,8 @@
 const { buildEmbedPage, buildLandingPage } = require('../index')
 
 const FALLBACKS = [
-  { name: 'VidSrc', url: 'https://vidsrc.to/embed/movie/27205' },
-  { name: 'VidLink', url: 'https://vidlink.pro/movie/27205' },
+  { url: 'https://vidlink.pro/movie/27205' },
+  { url: 'https://autoembed.co/movie/tmdb/27205' },
 ]
 const RESOLVE_URL = '/resolve/movie/27205'
 
@@ -25,7 +25,7 @@ describe('buildEmbedPage', () => {
     expect(html).toMatch(/<iframe[^>]*id="frame"[^>]*allowfullscreen/)
   })
 
-  test('contains the loading overlay', () => {
+  test('contains the loading overlay and spinner', () => {
     expect(html).toContain('id="overlay"')
     expect(html).toContain('class="spinner"')
   })
@@ -46,17 +46,13 @@ describe('buildEmbedPage', () => {
     expect(html).not.toContain('setActiveBtn')
   })
 
-  test('does NOT show server names in visible UI', () => {
-    // Fallback names must only appear inside the JSON data, not as UI labels
-    const jsonStart = html.indexOf('const FALLBACKS =')
-    const jsonEnd = html.indexOf('\n', jsonStart)
-    const outsideJson = html.slice(0, jsonStart) + html.slice(jsonEnd)
-    expect(outsideJson).not.toContain('VidSrc')
-    expect(outsideJson).not.toContain('VidLink')
+  test('does NOT reference vidsrc.to (requires IMDB ID, not TMDB)', () => {
+    // vidsrc.to needs tt... IMDB IDs — should not be in fallbacks built from TMDB ID
+    const jsonBlock = html.match(/const FALLBACKS = (\[.*?\])/s)?.[1] || ''
+    expect(jsonBlock).not.toContain('vidsrc.to')
   })
 
-  test('video and iframe have no z-index that would block controls', () => {
-    // Neither #player nor #frame should have a z-index above the overlay (z-index:10)
+  test('video and iframe have no z-index that blocks controls', () => {
     expect(html).not.toMatch(/#player[^{]*\{[^}]*z-index\s*:\s*[1-9]\d/)
     expect(html).not.toMatch(/#frame[^{]*\{[^}]*z-index\s*:\s*[1-9]\d/)
   })
@@ -65,14 +61,17 @@ describe('buildEmbedPage', () => {
     expect(html).toContain('hls.js')
   })
 
-  test('starts by calling startDirect()', () => {
+  test('boots with startDirect() not buildBar()', () => {
     expect(html).toContain('startDirect()')
-    // and NOT buildBar which would add the server switcher
     expect(html).not.toContain('buildBar(')
   })
 
-  test('iframe fallback does not display server name in status', () => {
-    // loadIframe used to show FALLBACKS[idx].name — now just shows "Loading…"
+  test('iframe load handler waits before hiding overlay', () => {
+    // must use setTimeout to delay hide — not hide immediately on load
+    expect(html).toContain('setTimeout(hideOverlay')
+  })
+
+  test('loadIframe shows generic status, not server names', () => {
     expect(html).toContain("setStatus('Loading…')")
     expect(html).not.toMatch(/setStatus\('Loading ' \+ FALLBACKS/)
   })

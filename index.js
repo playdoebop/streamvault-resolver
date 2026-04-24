@@ -119,25 +119,27 @@ app.get('/resolve/tv/:tmdbId/:season/:episode', async (req, res) => {
 // ── Embed pages ───────────────────────────────────────────────
 
 app.get('/embed/movie/:tmdbId', (req, res) => {
+  const id = req.params.tmdbId
+  // vidsrc.to requires an IMDB ID (tt...) — excluded here since we only have TMDB ID
   const fallbacks = [
-    { name: 'VidSrc',     url: `https://vidsrc.to/embed/movie/${req.params.tmdbId}` },
-    { name: 'VidLink',    url: `https://vidlink.pro/movie/${req.params.tmdbId}` },
-    { name: 'VidSrc XYZ', url: `https://vidsrc.xyz/embed/movie/${req.params.tmdbId}` },
-    { name: 'AutoEmbed',  url: `https://autoembed.co/movie/tmdb/${req.params.tmdbId}` },
-    { name: 'EmbedSu',    url: `https://embed.su/embed/movie/${req.params.tmdbId}` },
+    { url: `https://vidlink.pro/movie/${id}` },
+    { url: `https://autoembed.co/movie/tmdb/${id}` },
+    { url: `https://embed.su/embed/movie/${id}` },
+    { url: `https://vidsrc.xyz/embed/movie/${id}` },
+    { url: `https://multiembed.mov/?video_id=${id}&tmdb=1` },
   ]
   res.setHeader('Content-Type', 'text/html')
-  res.send(buildEmbedPage(`/resolve/movie/${req.params.tmdbId}`, fallbacks))
+  res.send(buildEmbedPage(`/resolve/movie/${id}`, fallbacks))
 })
 
 app.get('/embed/tv/:tmdbId/:season/:episode', (req, res) => {
   const { tmdbId, season, episode } = req.params
   const fallbacks = [
-    { name: 'VidSrc',     url: `https://vidsrc.to/embed/tv/${tmdbId}/${season}/${episode}` },
-    { name: 'VidLink',    url: `https://vidlink.pro/tv/${tmdbId}/${season}/${episode}` },
-    { name: 'VidSrc XYZ', url: `https://vidsrc.xyz/embed/tv/${tmdbId}/${season}/${episode}` },
-    { name: 'AutoEmbed',  url: `https://autoembed.co/tv/tmdb/${tmdbId}-${season}-${episode}` },
-    { name: 'EmbedSu',    url: `https://embed.su/embed/tv/${tmdbId}/${season}/${episode}` },
+    { url: `https://vidlink.pro/tv/${tmdbId}/${season}/${episode}` },
+    { url: `https://autoembed.co/tv/tmdb/${tmdbId}-${season}-${episode}` },
+    { url: `https://embed.su/embed/tv/${tmdbId}/${season}/${episode}` },
+    { url: `https://vidsrc.xyz/embed/tv/${tmdbId}/${season}/${episode}` },
+    { url: `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1&s=${season}&e=${episode}` },
   ]
   res.setHeader('Content-Type', 'text/html')
   res.send(buildEmbedPage(`/resolve/tv/${tmdbId}/${season}/${episode}`, fallbacks))
@@ -269,7 +271,11 @@ function loadIframe(idx) {
 
 function fallbackToIframe(idx) { loadIframe(idx) }
 
-frame.addEventListener('load', () => { clearIframeTimer(); hideOverlay() })
+frame.addEventListener('load', () => {
+  clearIframeTimer()
+  // give the iframe 800ms to actually paint before hiding the spinner
+  setTimeout(hideOverlay, 800)
+})
 
 startDirect()
 </script>
