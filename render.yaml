@@ -3,12 +3,8 @@ services:
     name: streamvault-resolver
     runtime: node
     buildCommand: |
-      apt-get update -qq
-      apt-get install -y -qq wget gnupg2
-      wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add -
-      echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list
-      apt-get update -qq
-      apt-get install -y -qq google-chrome-stable xvfb
+      curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
+      chmod +x /usr/local/bin/yt-dlp
       npm install
     startCommand: node index.js
     envVars:
@@ -16,10 +12,6 @@ services:
         value: production
       - key: PORT
         value: 10000
-      - key: CHROME_PATH
-        value: /opt/render/.cache/puppeteer/chrome/linux-137.0.7151.119/chrome-linux64/chrome
-      - key: DISPLAY
-        value: ":99"
       - key: TMDB_API_KEY
         sync: false
       - key: LOG_LEVEL
