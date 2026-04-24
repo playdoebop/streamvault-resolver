@@ -1,24 +1,25 @@
 {
-  "name": "bytewatch-stremio-addon",
+  "name": "streamvault-resolver",
   "version": "1.0.0",
-  "description": "A Node.js app to scrape streaming websites for links and provide it to Stremio",
+  "description": "StreamVault stream resolver — Stremio addon + web embed player",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "postinstall": "npx puppeteer browsers install chrome",
-    "dev": "vercel dev"
+    "dev": "node index.js",
+    "postinstall": "npx puppeteer browsers install chrome"
   },
   "keywords": [],
-  "author": "93bx",
+  "author": "streamvaults",
   "license": "ISC",
   "dependencies": {
     "axios": "^1.9.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
     "node-cache": "^5.1.2",
     "puppeteer-real-browser": "^1.4.2",
     "stremio-addon-sdk": "^1.1.6",
     "winston": "^3.17.0",
     "xvfb": "^0.4.0"
-  }, "devDependencies": {
-    "@vercel/node": "^3.0.0"
   }
 }

@@ -1,23 +1,16 @@
 services:
   - type: web
-    name: bytewatch-stremio-addon
+    name: streamvault-resolver
     runtime: node
     buildCommand: |
       apt-get update -qq
       apt-get install -y -qq wget gnupg2
-      
-      # Add Google Chrome repository
       wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add -
       echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list
-      
-      # Install Chrome
       apt-get update -qq
       apt-get install -y -qq google-chrome-stable xvfb
-      
-      # Install npm dependencies
       npm install
-    startCommand: |
-      node index.js
+    startCommand: node index.js
     envVars:
       - key: NODE_ENV
         value: production
@@ -27,4 +20,8 @@ services:
         value: /opt/render/.cache/puppeteer/chrome/linux-137.0.7151.119/chrome-linux64/chrome
       - key: DISPLAY
         value: ":99"
+      - key: TMDB_API_KEY
+        sync: false
+      - key: LOG_LEVEL
+        value: info
     plan: free
